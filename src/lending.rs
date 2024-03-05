@@ -1,33 +1,33 @@
 use cosmwasm_std::{
-    attr, BankMsg, coin, CosmosMsg, Decimal, DepsMut, Env, entry_point, MessageInfo, Response, StdError, StdResult, Uint128, WasmMsg,
+    attr, BankMsg, coin, CosmosMsg, Decimal, DepsMut, entry_point, Env, MessageInfo, Response, StdError, StdResult, Uint128, WasmMsg,
 };
 use cw_storage_plus::{Item, Map};
 use serde::{Deserialize, Serialize};
 
-// Define the contract's initialization message
+// 定義初始化合約的訊息結構
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct InstantiateMsg {
-    pub owner: String,
-    pub base_interest_rate: Decimal,
+    pub owner: String, // 合約擁有者地址
+    pub base_interest_rate: Decimal, // 基礎年利率
 }
 
-// Define message types for executing contract functions
+// 定義合約操作的訊息種類
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub enum ExecuteMsg {
-    DepositCollateral { token_address: String, amount: Uint128 },
-    WithdrawCollateral { token_address: String, amount: Uint128 },
-    Borrow { amount: Uint128 },
-    RepayLoan { amount: Uint128 },
+    DepositCollateral { token_address: String, amount: Uint128 }, // 存入抵押品
+    WithdrawCollateral { token_address: String, amount: Uint128 }, // 取出抵押品
+    Borrow { amount: Uint128 }, // 借款
+    RepayLoan { amount: Uint128 }, // 還款
 }
 
-// Contract configuration and state
+// 合約配置和狀態
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct Config {
     pub owner: String,
     pub base_interest_rate: Decimal,
 }
 
-// Loan information structure
+// 借款資訊
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct LoanInfo {
     pub amount_borrowed: Uint128,
@@ -35,20 +35,18 @@ pub struct LoanInfo {
     pub loan_start_time: u64,
 }
 
-// Collateral information structure
+// 抵押品資訊
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct Collateral {
     pub token_address: String,
     pub amount: Uint128,
 }
 
-// Storage items definition
 const CONFIG: Item<Config> = Item::new("config");
 const LOANS: Map<String, LoanInfo> = Map::new("loans");
 const COLLATERALS: Map<String, Collateral> = Map::new("collaterals");
 
-// Instantiates the contract with given configuration
-#[entry_point]
+// 初始化合約
 pub fn instantiate(
     deps: DepsMut,
     _env: Env,
@@ -63,8 +61,7 @@ pub fn instantiate(
     Ok(Response::new().add_attribute("method", "instantiate"))
 }
 
-// Main execution point for the contract, handling various functions based on the message received
-#[entry_point]
+// 執行合約操作
 pub fn execute(
     deps: DepsMut,
     env: Env,
@@ -87,7 +84,7 @@ pub fn execute(
     }
 }
 
-// Implements collateral deposit logic
+// 實作存入抵押品的邏輯
 fn deposit_collateral(deps: DepsMut, info: MessageInfo, token_address: String, amount: Uint128) -> StdResult<Response> {
     if amount.is_zero() {
         return Err(StdError::generic_err("Amount cannot be zero"));
@@ -99,45 +96,7 @@ fn deposit_collateral(deps: DepsMut, info: MessageInfo, token_address: String, a
         .add_attribute("amount", amount.to_string()))
 }
 
-// Implements borrowing logic, including interest calculation
-fn borrow(deps: DepsMut, env: Env, info: MessageInfo, amount: Uint128) -> StdResult<Response> {
-    let loan_info = LoanInfo {
-        amount_borrowed: amount,
-        interest_rate: Decimal::percent(5), // Assumes a fixed annual interest rate of 5%
-        loan_start_time: env.block.time.seconds(),
-    };
-    LOANS.save(deps.storage, info.sender.to_string(), &loan_info)?;
-
-    let payout = coin(amount.u128(), "uscrt"); // Example assumes "uscrt" as the currency
-    let bank_msg = BankMsg::Send {
-        to_address: info.sender.into(),
-        amount: vec![payout],
-    };
-
-    Ok(Response::new()
-        .add_message(bank_msg)
-        .add_attribute("action", "borrow")
-        .add_attribute("amount", amount.to_string()))
-}
-
-// Implements loan repayment logic, including interest payments
-fn repay_loan(deps: DepsMut, info: MessageInfo, amount: Uint128) -> StdResult<Response> {
-    let loan = LOANS.load(deps.storage, info.sender.to_string())?;
-    let interest = loan.amount_borrowed * loan.interest_rate;
-    let total_due = loan.amount_borrowed + interest;
-
-    if amount < total_due {
-        return Err(StdError::generic_err("Repayment amount is not enough to cover the loan and interest"));
-    }
-    LOANS.remove(deps.storage, info.sender.to_string());
-
-    Ok(Response::new()
-        .add_attribute("action", "repay_loan")
-        .add_attribute("amount", amount.to_string())
-        .add_attribute("interest_paid", interest.to_string()))
-}
-
-// 實現抵押品取出邏輯
+// 實作取出抵押品的邏輯
 fn withdraw_collateral(deps: DepsMut, info: MessageInfo, token_address: String, amount: Uint128) -> StdResult<Response> {
     // 首先檢查用戶是否有足夠的抵押品可供取出
     let collateral = COLLATERALS.load(deps.storage, info.sender.to_string())?;
@@ -164,4 +123,42 @@ fn withdraw_collateral(deps: DepsMut, info: MessageInfo, token_address: String, 
         .add_attribute("action", "withdraw_collateral")
         .add_attribute("amount", amount.to_string())
         .add_attribute("token_address", token_address))
+}
+
+// 實作借款的邏輯
+fn borrow(deps: DepsMut, env: Env, info: MessageInfo, amount: Uint128) -> StdResult<Response> {
+    let loan_info = LoanInfo {
+        amount_borrowed: amount,
+        interest_rate: Decimal::percent(5), // Assumes a fixed annual interest rate of 5%
+        loan_start_time: env.block.time.seconds(),
+    };
+    LOANS.save(deps.storage, info.sender.to_string(), &loan_info)?;
+
+    let payout = coin(amount.u128(), "uscrt"); // Example assumes "uscrt" as the currency
+    let bank_msg = BankMsg::Send {
+        to_address: info.sender.into(),
+        amount: vec![payout],
+    };
+
+    Ok(Response::new()
+        .add_message(bank_msg)
+        .add_attribute("action", "borrow")
+        .add_attribute("amount", amount.to_string()))
+}
+
+// 實作還款的邏輯
+fn repay_loan(deps: DepsMut, info: MessageInfo, amount: Uint128) -> StdResult<Response> {
+    let loan = LOANS.load(deps.storage, info.sender.to_string())?;
+    let interest = loan.amount_borrowed * loan.interest_rate;
+    let total_due = loan.amount_borrowed + interest;
+
+    if amount < total_due {
+        return Err(StdError::generic_err("Repayment amount is not enough to cover the loan and interest"));
+    }
+    LOANS.remove(deps.storage, info.sender.to_string());
+
+    Ok(Response::new()
+        .add_attribute("action", "repay_loan")
+        .add_attribute("amount", amount.to_string())
+        .add_attribute("interest_paid", interest.to_string()))
 }
