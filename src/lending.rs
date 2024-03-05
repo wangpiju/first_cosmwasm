@@ -1,5 +1,6 @@
+//導入所需的庫
 use cosmwasm_std::{
-    attr, BankMsg, coin, CosmosMsg, Decimal, DepsMut, entry_point, Env, MessageInfo, Response, StdError, StdResult, Uint128, WasmMsg,
+    BankMsg, coin, Decimal, DepsMut, entry_point, Env, MessageInfo, Response, StdError, StdResult, Uint128
 };
 use cw_storage_plus::{Item, Map};
 use serde::{Deserialize, Serialize};
@@ -23,25 +24,26 @@ pub enum ExecuteMsg {
 // 合約配置和狀態
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct Config {
-    pub owner: String,
-    pub base_interest_rate: Decimal,
+    pub owner: String, //擁有者地址
+    pub base_interest_rate: Decimal, //基礎年利率
 }
 
 // 借款資訊
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct LoanInfo {
-    pub amount_borrowed: Uint128,
-    pub interest_rate: Decimal,
-    pub loan_start_time: u64,
+    pub amount_borrowed: Uint128,//借款金額
+    pub interest_rate: Decimal, //利率
+    pub loan_start_time: u64, //借款開始時間
 }
 
 // 抵押品資訊
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct Collateral {
-    pub token_address: String,
-    pub amount: Uint128,
+    pub token_address: String, //token address
+    pub amount: Uint128, //抵押金額
 }
 
+//這部分定義了合約中用於存儲配置、借款資訊和抵押品資訊的存儲項目。
 const CONFIG: Item<Config> = Item::new("config");
 const LOANS: Map<String, LoanInfo> = Map::new("loans");
 const COLLATERALS: Map<String, Collateral> = Map::new("collaterals");
@@ -134,7 +136,7 @@ fn borrow(deps: DepsMut, env: Env, info: MessageInfo, amount: Uint128) -> StdRes
     };
     LOANS.save(deps.storage, info.sender.to_string(), &loan_info)?;
 
-    let payout = coin(amount.u128(), "uscrt"); // Example assumes "uscrt" as the currency
+    let payout = coin(amount.u128(), "usdc"); // Example assumes "usdc" as the currency
     let bank_msg = BankMsg::Send {
         to_address: info.sender.into(),
         amount: vec![payout],
@@ -162,3 +164,57 @@ fn repay_loan(deps: DepsMut, info: MessageInfo, amount: Uint128) -> StdResult<Re
         .add_attribute("amount", amount.to_string())
         .add_attribute("interest_paid", interest.to_string()))
 }
+
+// Implements interest rate update logic (owner only)
+fn update_interest_rate(deps: DepsMut, info: MessageInfo, new_rate: Decimal) -> StdResult<Response> {
+    // Verify if the sender is the owner
+    let config = CONFIG.load(deps.storage)?;
+    if info.sender != config.owner {
+        return Err(StdError::generic_err("You have no permissions."));
+    }
+
+    // Update the interest rate
+    CONFIG.update(deps.storage, |mut conf| -> StdResult<_> {
+        conf.base_interest_rate = new_rate;
+        Ok(conf)
+    })?;
+
+    Ok(Response::new()
+        .add_attribute("action", "update_interest_rate")
+        .add_attribute("new_rate", new_rate.to_string()))
+}
+
+
+//Possible Issues:
+//
+// Permission Control:
+// The contract does not explicitly control permissions for certain operations
+// (such as changing interest rates or withdrawing collateral), potentially allowing anyone to
+// perform these actions. Typically, these operations should be restricted so that only
+// the contract owner or users with specific permissions can execute them.
+//
+// Interest Rate Updates:
+// The contract lacks functionality to update interest rates.
+// In practical applications, it may be necessary to adjust the base interest rate based on
+// market conditions.
+//
+// Collateral Handling:
+// In the withdraw_collateral function, if a user attempts to
+// withdraw an amount of collateral exceeding the stored amount, the contract will return an error.
+// This behavior is expected, but the contract does not explicitly handle the situation where a
+// borrower has an outstanding loan. In real-world applications, borrowers should be prevented from
+// withdrawing collateral while having outstanding loans, or they should be required to repay first.
+//
+// Error Handling:
+// Some functions may require more detailed error messages when handling errors,
+// to aid in debugging and help users understand why an operation failed.
+//
+// Security:
+// The contract does not address security considerations,
+// such as integer overflow or re-entrancy attacks. Although CosmWasm has
+// certain security mechanisms in place, it is best to explicitly handle potential
+// security risks within the contract logic.
+//
+// Loan and Repayment Details:
+// The contract simplifies the loan and repayment process and does not account
+// for complex scenarios such as loan terms and overdue repayments.
