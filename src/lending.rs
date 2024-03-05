@@ -1,18 +1,18 @@
-//導入所需的庫
+//import libs
 use cosmwasm_std::{
     BankMsg, coin, Decimal, DepsMut, entry_point, Env, MessageInfo, Response, StdError, StdResult, Uint128
 };
 use cw_storage_plus::{Item, Map};
 use serde::{Deserialize, Serialize};
 
-// 定義初始化合約的訊息結構
+// define init message struct
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct InstantiateMsg {
     pub owner: String, // 合約擁有者地址
     pub base_interest_rate: Decimal, // 基礎年利率
 }
 
-// 定義合約操作的訊息種類
+// define contract supported operations
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub enum ExecuteMsg {
     DepositCollateral { token_address: String, amount: Uint128 }, // 存入抵押品
@@ -21,34 +21,34 @@ pub enum ExecuteMsg {
     RepayLoan { amount: Uint128 }, // 還款
 }
 
-// 合約配置和狀態
+// config and status
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct Config {
     pub owner: String, //擁有者地址
     pub base_interest_rate: Decimal, //基礎年利率
 }
 
-// 借款資訊
+// loan info
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct LoanInfo {
-    pub amount_borrowed: Uint128,//借款金額
-    pub interest_rate: Decimal, //利率
-    pub loan_start_time: u64, //借款開始時間
+    pub amount_borrowed: Uint128,//borrowed amount
+    pub interest_rate: Decimal, //interest rate
+    pub loan_start_time: u64, //loan start time
 }
 
-// 抵押品資訊
+// Collateral info
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct Collateral {
     pub token_address: String, //token address
-    pub amount: Uint128, //抵押金額
+    pub amount: Uint128, //amount
 }
 
-//這部分定義了合約中用於存儲配置、借款資訊和抵押品資訊的存儲項目。
+//storage config、loan info and collateral storage。
 const CONFIG: Item<Config> = Item::new("config");
 const LOANS: Map<String, LoanInfo> = Map::new("loans");
 const COLLATERALS: Map<String, Collateral> = Map::new("collaterals");
 
-// 初始化合約
+// contract init
 pub fn instantiate(
     deps: DepsMut,
     _env: Env,
@@ -63,7 +63,7 @@ pub fn instantiate(
     Ok(Response::new().add_attribute("method", "instantiate"))
 }
 
-// 執行合約操作
+// execute contract operations
 pub fn execute(
     deps: DepsMut,
     env: Env,
@@ -86,7 +86,7 @@ pub fn execute(
     }
 }
 
-// 實作存入抵押品的邏輯
+// deposit collateral logic
 fn deposit_collateral(deps: DepsMut, info: MessageInfo, token_address: String, amount: Uint128) -> StdResult<Response> {
     if amount.is_zero() {
         return Err(StdError::generic_err("Amount cannot be zero"));
@@ -98,7 +98,7 @@ fn deposit_collateral(deps: DepsMut, info: MessageInfo, token_address: String, a
         .add_attribute("amount", amount.to_string()))
 }
 
-// 實作取出抵押品的邏輯
+// withdraw collateral logic
 fn withdraw_collateral(deps: DepsMut, info: MessageInfo, token_address: String, amount: Uint128) -> StdResult<Response> {
     // 首先檢查用戶是否有足夠的抵押品可供取出
     let collateral = COLLATERALS.load(deps.storage, info.sender.to_string())?;
@@ -127,7 +127,7 @@ fn withdraw_collateral(deps: DepsMut, info: MessageInfo, token_address: String, 
         .add_attribute("token_address", token_address))
 }
 
-// 實作借款的邏輯
+// borrow logic
 fn borrow(deps: DepsMut, env: Env, info: MessageInfo, amount: Uint128) -> StdResult<Response> {
     let loan_info = LoanInfo {
         amount_borrowed: amount,
@@ -148,7 +148,7 @@ fn borrow(deps: DepsMut, env: Env, info: MessageInfo, amount: Uint128) -> StdRes
         .add_attribute("amount", amount.to_string()))
 }
 
-// 實作還款的邏輯
+// repay logic
 fn repay_loan(deps: DepsMut, info: MessageInfo, amount: Uint128) -> StdResult<Response> {
     let loan = LOANS.load(deps.storage, info.sender.to_string())?;
     let interest = loan.amount_borrowed * loan.interest_rate;
